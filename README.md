@@ -98,13 +98,9 @@ All images include `git`, `curl`, `build-essential`, and `ca-certificates`.
 
 Every image ships the Docker client tools preinstalled, so `docker`, `docker compose`, and
 the standalone `docker-compose` command are ready to use out of the box — no setup commands
-required. This makes Docker Compose–based workflows work seamlessly in Warp hosted sandboxes.
+required.
 
 Only the **client** tools are installed (`docker` CLI, the Compose v2 plugin, and Buildx).
-A Docker daemon is provided by the sandbox host at runtime (for example, Docker-routed Warp
-hosted sandboxes), so `docker compose up` and similar commands connect to the host's daemon.
-
-If you don't need Docker and want a slimmer image, build with `--build-arg INSTALL_DOCKER=false`.
 
 ## Coding agent CLIs (`-agents` variants)
 
