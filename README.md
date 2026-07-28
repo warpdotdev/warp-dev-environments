@@ -94,6 +94,14 @@ runtimes. Each image is published in two variants:
 
 All images include `git`, `curl`, `build-essential`, and `ca-certificates`.
 
+## Docker & Docker Compose
+
+Every image ships the Docker client tools preinstalled, so `docker`, `docker compose`, and
+the standalone `docker-compose` command are ready to use out of the box — no setup commands
+required.
+
+Only the **client** tools are installed (`docker` CLI, the Compose v2 plugin, and Buildx).
+
 ## Coding agent CLIs (`-agents` variants)
 
 If you want to use a different harness from Oz's main agent, you can use Oz to

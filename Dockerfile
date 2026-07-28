@@ -22,7 +22,17 @@ ARG INSTALL_DOTNET=false
 ARG INSTALL_RUBY=false
 ARG INSTALL_BROWSERS=false
 ARG INSTALL_CODING_AGENTS=false
+# Docker client tooling is installed by default so `docker` and `docker compose`
+# are ready to use in every image. Set to "false" to build a slimmer image.
+ARG INSTALL_DOCKER=true
 ARG LANGUAGES=""
+
+# =============================================================================
+# DOCKER TOOLING VERSIONS
+# =============================================================================
+ARG DOCKER_VERSION=27.5.1
+ARG DOCKER_COMPOSE_VERSION=v2.32.4
+ARG DOCKER_BUILDX_VERSION=v0.19.3
 
 # Base dependencies
 RUN apt-get update && apt-get install -y \
@@ -55,6 +65,40 @@ RUN apt-get update && apt-get install -y \
 # uv + uvx (Python package/project manager)
 RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh && \
     uv --version
+
+# Docker CLI + Compose plugin + Buildx plugin (client tools only).
+# Only the client binaries are installed; a Docker daemon is provided by the
+# sandbox host at runtime (e.g. Docker-routed Warp hosted sandboxes). This makes
+# `docker`, `docker compose`, and the standalone `docker-compose` command
+# available out of the box so customers don't have to install them via setup
+# commands.
+RUN if [ "$INSTALL_DOCKER" = "true" ]; then \
+      set -eux; \
+      dpkgArch="$(dpkg --print-architecture)"; \
+      case "${dpkgArch}" in \
+        amd64) DOCKER_ARCH='x86_64'; PLUGIN_ARCH='x86_64'; BUILDX_ARCH='linux-amd64';; \
+        arm64) DOCKER_ARCH='aarch64'; PLUGIN_ARCH='aarch64'; BUILDX_ARCH='linux-arm64';; \
+        *) echo "Unsupported architecture for Docker: ${dpkgArch}" >&2; exit 1;; \
+      esac; \
+      # Docker CLI: extract only the `docker` client binary from the static bundle. \
+      curl --proto '=https' --tlsv1.2 -fsSLO "https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-${DOCKER_VERSION}.tgz"; \
+      tar -xzf "docker-${DOCKER_VERSION}.tgz" --strip-components=1 -C /usr/local/bin docker/docker; \
+      rm "docker-${DOCKER_VERSION}.tgz"; \
+      mkdir -p /usr/local/lib/docker/cli-plugins; \
+      # Compose v2, available both as `docker compose` and standalone `docker-compose`. \
+      curl --proto '=https' --tlsv1.2 -fsSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
+        "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${PLUGIN_ARCH}"; \
+      chmod +x /usr/local/lib/docker/cli-plugins/docker-compose; \
+      ln -s /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose; \
+      # Buildx (used by `docker buildx` and `docker compose build`). \
+      curl --proto '=https' --tlsv1.2 -fsSL -o /usr/local/lib/docker/cli-plugins/docker-buildx \
+        "https://github.com/docker/buildx/releases/download/${DOCKER_BUILDX_VERSION}/buildx-${DOCKER_BUILDX_VERSION}.${BUILDX_ARCH}"; \
+      chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx; \
+      docker --version && \
+      docker compose version && \
+      docker-compose version && \
+      docker buildx version ; \
+    fi
 
 # Bun
 RUN if [ "$INSTALL_BUN" = "true" ]; then \
