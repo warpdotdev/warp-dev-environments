@@ -10,6 +10,7 @@ ARG RUST_VERSION=1.83.0
 ARG JAVA_VERSION=21
 ARG DOTNET_VERSION=8.0
 ARG RUBY_VERSION=3.3
+ARG ANDROID_CMDLINE_TOOLS_VERSION=15859902
 
 # =============================================================================
 # INSTALL FLAGS
@@ -21,6 +22,7 @@ ARG INSTALL_JAVA=false
 ARG INSTALL_DOTNET=false
 ARG INSTALL_RUBY=false
 ARG INSTALL_BROWSERS=false
+ARG INSTALL_ANDROID_SDK=false
 ARG INSTALL_CODING_AGENTS=false
 # Docker client tooling is installed by default so `docker` and `docker compose`
 # are ready to use in every image. Set to "false" to build a slimmer image.
@@ -141,13 +143,18 @@ RUN if [ "$INSTALL_GO" = "true" ]; then \
       go version ; \
     fi
 
-# Java (Eclipse Temurin) + Maven + Gradle
-RUN if [ "$INSTALL_JAVA" = "true" ]; then \
+# Java (Eclipse Temurin) + Maven + Gradle.
+# Also installed when INSTALL_ANDROID_SDK is true, since Android tools
+# require a JDK; this avoids installing a second, separate JDK for Android.
+RUN if [ "$INSTALL_JAVA" = "true" ] || [ "$INSTALL_ANDROID_SDK" = "true" ]; then \
       apt-get update && apt-get install -y wget apt-transport-https gnupg && \
       wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg && \
       echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(. /etc/os-release && echo $VERSION_CODENAME) main" > /etc/apt/sources.list.d/adoptium.list && \
       apt-get update && apt-get install -y temurin-${JAVA_VERSION}-jdk maven gradle && \
       rm -rf /var/lib/apt/lists/* && \
+      JAVA_HOME_DETECTED="$(dirname "$(dirname "$(readlink -f "$(which javac)")")")" && \
+      echo "export JAVA_HOME=${JAVA_HOME_DETECTED}" > /etc/profile.d/10-java.sh && \
+      chmod +r /etc/profile.d/10-java.sh && \
       java --version && \
       mvn --version && \
       gradle --version ; \
@@ -198,6 +205,48 @@ RUN if [ "$INSTALL_BROWSERS" = "true" ]; then \
       rm -rf /var/lib/apt/lists/* && \
       echo "Chromium version:" && chromium --version && \
       echo "Firefox version:" && firefox --version ; \
+    fi
+
+# Android SDK + emulator. Preinstalls the command-line tools, platform-tools,
+# and the emulator binary with licenses pre-accepted. Also preinstalls the
+# `android` CLI, the recommended replacement for the deprecated `sdkmanager`
+# (both ship in the same cmdline-tools bin directory). The `android` binary
+# is only a small bootstrap stub that lazily downloads its real payload into
+# $HOME/.android on first run, so it's invoked once here to bake that payload
+# into the image and avoid a network fetch + ToS notice on first use.
+# System images and AVDs are deliberately NOT preinstalled
+# since they're large and version-specific; install the desired
+# `system-images;android-<N>;<variant>;x86_64` package and create the AVD as
+# a setup command instead.
+RUN if [ "$INSTALL_ANDROID_SDK" = "true" ]; then \
+      set -eux; \
+      apt-get update && apt-get install -y --no-install-recommends \
+        unzip \
+        libpulse0 libnss3 libxcomposite1 libxcursor1 libxdamage1 libxi6 libxtst6 \
+        libasound2t64 libatk1.0-0t64 libcups2t64 libdrm2 libxrandr2 libgbm1 \
+        libxshmfence1 libxfixes3 libxkbfile1 && \
+      rm -rf /var/lib/apt/lists/* && \
+      mkdir -p /opt/android-sdk/cmdline-tools && \
+      cd /opt/android-sdk/cmdline-tools && \
+      curl --proto '=https' --tlsv1.2 -fsSLO "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_VERSION}_latest.zip" && \
+      unzip -q "commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_VERSION}_latest.zip" && \
+      mv cmdline-tools latest && \
+      rm "commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_VERSION}_latest.zip" && \
+      { \
+        echo 'export ANDROID_SDK_ROOT=/opt/android-sdk'; \
+        echo 'export ANDROID_HOME=/opt/android-sdk'; \
+        echo 'export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/emulator:$PATH'; \
+      } > /etc/profile.d/20-android.sh && \
+      chmod +r /etc/profile.d/20-android.sh && \
+      . /etc/profile.d/10-java.sh && \
+      . /etc/profile.d/20-android.sh && \
+      yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses > /dev/null && \
+      sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "emulator" && \
+      android --version --no-metrics && \
+      chmod -R a+rX /opt/android-sdk && \
+      java --version && \
+      sdkmanager --version && \
+      emulator -version ; \
     fi
 
 # Coding Agent CLIs

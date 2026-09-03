@@ -90,6 +90,7 @@ runtimes. Each image is published in two variants:
 | **warpdotdev/dev-dotnet** | `8.0` / `8.0-agents` | .NET SDK 8.0 + base |
 | **warpdotdev/dev-ruby** | `3.3` / `3.3-agents` | Ruby 3.3 + Bundler + base |
 | **warpdotdev/dev-web** | `latest` / `latest-agents` | Google Chrome, Firefox + base |
+| **warpdotdev/dev-android** | `latest` / `latest-agents` | Android SDK cmdline-tools, platform-tools, emulator, JDK + base |
 | **warpdotdev/dev-full** | `latest` / `latest-agents` | All languages + base |
 
 All images include `git`, `curl`, `build-essential`, and `ca-certificates`.
@@ -141,6 +142,26 @@ You can also extend one of the prebuilt images in your own Dockerfile:
 FROM warpdotdev/dev-base:latest
 RUN apt-get update && apt-get install -y your-package
 ```
+
+## Image-specific notes
+
+### `dev-android`
+
+The `warpdotdev/dev-android` image preinstalls a JDK, the Android SDK command-line tools,
+`platform-tools`, and the `emulator` binary.
+
+No system images or AVDs are preinstalled. Instead, install the image(s) you need and create AVDs
+through setup commands, e.g.:
+
+```bash
+android sdk install "platforms;android-33" "system-images;android-33;google_apis;x86_64"
+avdmanager create avd -n my_avd -k "system-images;android-33;google_apis;x86_64" -d "pixel_5" --force
+```
+
+The Android `emulator` package is only published for x86_64, so there is no `linux/arm64` version of this image.
+
+The default shell profile sets Android SDK environment variables (`ANDROID_SDK_ROOT`, `ANDROID_HOME`, and `JAVA_HOME`),
+and adds the SDK tools to `PATH`.
 
 ## Helpful tips
 
